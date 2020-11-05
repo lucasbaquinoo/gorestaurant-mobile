@@ -1,19 +1,10 @@
-import React, {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useLayoutEffect,
-} from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Image } from 'react-native';
-
 import Icon from 'react-native-vector-icons/Feather';
-import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+
 import formatValue from '../../utils/formatValue';
-
 import api from '../../services/api';
-
 import {
   Container,
   Header,
@@ -55,7 +46,9 @@ interface Food {
   name: string;
   description: string;
   price: number;
+  category: number;
   image_url: string;
+  thumbnail_url: string;
   formattedPrice: string;
   extras: Extra[];
 }
@@ -63,7 +56,6 @@ interface Food {
 const FoodDetails: React.FC = () => {
   const [food, setFood] = useState({} as Food);
   const [extras, setExtras] = useState<Extra[]>([]);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [foodQuantity, setFoodQuantity] = useState(1);
 
   const navigation = useNavigation();
@@ -73,59 +65,61 @@ const FoodDetails: React.FC = () => {
 
   useEffect(() => {
     async function loadFood(): Promise<void> {
-      // Load a specific food with extras based on routeParams id
+      const { data } = await api.get<Food>(`/foods/${routeParams.id}`);
+
+      setFood({ ...data, formattedPrice: formatValue(data.price) });
+      setExtras(data.extras.map(extra => ({ ...extra, quantity: 0 })));
     }
 
     loadFood();
   }, [routeParams]);
 
   function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
+    const extraIndex = extras.findIndex(extra => extra.id === id);
+    const updatedExtras = [...extras];
+    updatedExtras[extraIndex].quantity += 1;
+
+    setExtras(updatedExtras);
   }
 
   function handleDecrementExtra(id: number): void {
-    // Decrement extra quantity
+    const extraIndex = extras.findIndex(extra => extra.id === id);
+    if (extras[extraIndex].quantity > 0) {
+      const updatedExtras = [...extras];
+      updatedExtras[extraIndex].quantity -= 1;
+      setExtras(updatedExtras);
+    }
   }
 
   function handleIncrementFood(): void {
-    // Increment food quantity
+    setFoodQuantity(state => state + 1);
   }
 
   function handleDecrementFood(): void {
-    // Decrement food quantity
+    if (foodQuantity > 1) {
+      setFoodQuantity(foodQuantity - 1);
+    }
   }
 
-  const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
-  }, [isFavorite, food]);
-
   const cartTotal = useMemo(() => {
-    // Calculate cartTotal
+    const extrasTotal = extras.reduce(
+      (price, extra) => extra.value * extra.quantity + price,
+      0,
+    );
+
+    return formatValue(food.price * foodQuantity + extrasTotal);
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
-    // Finish the order and save on the API
-  }
-
-  // Calculate the correct icon name
-  const favoriteIconName = useMemo(
-    () => (isFavorite ? 'favorite' : 'favorite-border'),
-    [isFavorite],
-  );
-
-  useLayoutEffect(() => {
-    // Add the favorite icon on the right of the header bar
-    navigation.setOptions({
-      headerRight: () => (
-        <MaterialIcon
-          name={favoriteIconName}
-          size={24}
-          color="#FFB84D"
-          onPress={() => toggleFavorite()}
-        />
-      ),
+    await api.post('orders', {
+      food: {
+        ...food,
+        quantity: foodQuantity,
+      },
+      extras,
     });
-  }, [navigation, favoriteIconName, toggleFavorite]);
+    navigation.navigate('Dashboard');
+  }
 
   return (
     <Container>
@@ -201,7 +195,10 @@ const FoodDetails: React.FC = () => {
             </QuantityContainer>
           </PriceButtonContainer>
 
-          <FinishOrderButton onPress={() => handleFinishOrder()}>
+          <FinishOrderButton
+            testID="finish"
+            onPress={() => handleFinishOrder()}
+          >
             <ButtonText>Confirmar pedido</ButtonText>
             <IconContainer>
               <Icon name="check-square" size={24} color="#fff" />
